@@ -1,4 +1,4 @@
-// Universal Audio Guard 1.0.0 — djred
+// Universal Audio Guard 1.0.1 — djred
 import Foundation
 import CoreAudio
 
@@ -48,9 +48,17 @@ if CommandLine.arguments.contains("--list") {
 }
 if CommandLine.arguments.contains("--once") { enforce(); exit(0) }
 let queue = DispatchQueue.main
+var pending: DispatchWorkItem?
+func scheduleRestore() {
+    pending?.cancel()
+    let work = DispatchWorkItem { enforce() }
+    pending = work
+    // Let clients finish adopting the new device before restoring the preferred one.
+    queue.asyncAfter(deadline: .now() + 1.0, execute: work)
+}
 for selector in [kAudioHardwarePropertyDefaultInputDevice, kAudioHardwarePropertyDefaultOutputDevice, kAudioHardwarePropertyDefaultSystemOutputDevice, kAudioHardwarePropertyDevices] {
     var a = address(selector)
-    AudioObjectAddPropertyListenerBlock(system, &a, queue) { _, _ in enforce() }
+    AudioObjectAddPropertyListenerBlock(system, &a, queue) { _, _ in scheduleRestore() }
 }
 // A slow fallback also handles reconnects and wake from sleep.
 let timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in enforce() }
