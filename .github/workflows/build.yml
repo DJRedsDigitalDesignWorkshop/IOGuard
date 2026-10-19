@@ -1,0 +1,25 @@
+name: Build macOS app
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build universal app
+        run: ./scripts/build.sh
+      - name: Verify binary and bundle
+        run: |
+          lipo -verify_arch arm64 x86_64 build/IOGuard.app/Contents/MacOS/IOGuard
+          codesign --verify --deep --strict build/IOGuard.app
+          plutil -lint build/IOGuard.app/Contents/Info.plist
+          ditto -c -k --keepParent build/IOGuard.app build/IOGuard-development.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IOGuard-development-unsigned
+          path: build/IOGuard-development.zip
