@@ -11,7 +11,8 @@ Turn the user-verified Universal Audio Guard into a downloadable macOS menu-bar 
 - [x] Compile universal app and inspect UI; live app restoration and login testing remain pending.
 - [x] Package a Developer ID signed drag-to-Applications DMG.
 - [ ] Notarize and staple if a usable saved profile is available.
-- [ ] Create GitHub repository, push source, and upload a versioned release.
+- [x] Create GitHub repository and push source.
+- [ ] Publish notarized release (signed draft available; Apple credential setup pending).
 
 ## Acceptance
 Guard defaults by stable device UID; handle unplugged/ambiguous devices without choosing another device. Preserve the one-second restoration delay. Distinguish static build checks, UI verification, live audio tests, signing, and notarization. Keep the existing installed guard working until migration is deliberate.

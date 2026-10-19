@@ -14,3 +14,10 @@
 ## Working assumptions to verify
 - A device-change timing race is a plausible explanation; no root cause has been proven.
 - Current app release work targets 1.1.0; live app-specific audio behavior is not yet verified.
+
+## App preparation — October 19, 2026
+- IOGuard 1.1.0 built for arm64 and x86_64, macOS 13+.
+- Developer ID signatures on app and DMG verified. Custom icon flags and mounted payload verified.
+- UI inspected with real Universal Audio devices; legacy-detection block kept the app paused. Original working audio guard remains installed.
+- Source repository: https://github.com/DJRedsDigitalDesignWorkshop/IOGuard . Signed release prepared as a draft; notarization credentials need local user setup.
+- No native app live-route, disconnected-device, or launch-at-login claim has been made; see docs/VALIDATION.md.
