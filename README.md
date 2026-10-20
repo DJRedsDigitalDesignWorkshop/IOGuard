@@ -19,6 +19,6 @@ The guard may allow a brief switch before restoring the defaults. Apps with thei
 Requires Xcode command-line tools and the macOS SDK. Rebuild artwork with `swift scripts/make-icon.swift` if needed. See [signing and notarization](docs/SIGNING.md), [engineering](ENGINEERING.md), [plan](PLAN.md), and [changelog](CHANGELOG.md).
 
 ## Original script
-AudioGuard.swift, Install.command, Uninstall.command, and ua-audio-guard preserve the original user-verified Universal Audio Thunderbolt guard. Its version is 1.0.1; the native app starts at 1.1.0. Run only one guard at a time.
+AudioGuard.swift, Install.command, Uninstall.command, and ua-audio-guard preserve the original user-verified Universal Audio Thunderbolt guard. Its version is 1.0.2; the native app starts at 1.1.0. Run only one guard at a time.
 
 Author: djred.

@@ -15,4 +15,4 @@ Path(agent).write_bytes(plistlib.dumps(data))
 PY
 launchctl bootout "gui/$(id -u)" "$AGENT" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$AGENT"
-echo 'Universal Audio Guard 1.0.1 installed and running.'
+echo 'Universal Audio Guard 1.0.2 installed and running.'

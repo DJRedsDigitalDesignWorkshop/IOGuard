@@ -21,3 +21,6 @@
 - UI inspected with real Universal Audio devices; legacy-detection block kept the app paused. Original working audio guard remains installed.
 - Source repository: https://github.com/DJRedsDigitalDesignWorkshop/IOGuard . Signed release prepared as a draft; notarization credentials need local user setup.
 - No native app live-route, disconnected-device, or launch-at-login claim has been made; see docs/VALIDATION.md.
+
+## Recurrence — October 20, 2026
+TV power-on again sent Firefox audio through the TV return despite reported defaults being UA. Switching to built-in output and letting the guard restore UA reactivated COMPUTER and quieted ANALOG 5/6. Legacy v1.0.1 fallback could bypass pending debounce; CLI v1.0.2 fixes that race. Root cause of every AirPlay reroute is still unproven; a fresh TV power-on listening test is required.

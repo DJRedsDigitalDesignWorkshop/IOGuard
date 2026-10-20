@@ -13,3 +13,8 @@ Verified with Firefox YouTube playback, Universal Audio Thunderbolt, and 43in TC
 - DMG checksum validated with hdiutil; app and DMG signatures verified. Mounted payload contained the signed app, Applications link, readme, and matching .VolumeIcon.icns. Finder custom-icon flags were present on the mounted volume and local DMG file.
 
 Not yet verified: native app enforcement with legacy service removed, preference persistence after a device change, disconnect/reconnect, actual launch at login, and native app AirPlay recovery. The original CLI guard remains the user's active audio guard. Notarization is pending a usable notarytool keychain profile; keep release as a draft.
+
+## Legacy guard v1.0.2 — October 20, 2026
+- Compiled cleanly and independently reviewed. Hardware-free timing test passes: pending debounce blocks fallback, repeated notifications delay restoration, and fallback resumes afterward.
+- Installed executable matches the built v1.0.2 binary; LaunchAgent restarted successfully. Previous v1.0.1 executable retained locally as rollback backup.
+- Current playback was restored from TV return to Apollo COMPUTER before installing the patch. A new full TV power-on test remains required; the timing defect is verified, but its role in every AirPlay failure is unproven.

@@ -6,6 +6,11 @@
 - Lock-over-speakers app and installer artwork.
 - Signing, notarization, release, and contributor documentation.
 
+## 1.0.2 — Legacy guard patch
+- Prevent the fallback timer from bypassing a pending one-second restoration.
+- Clear completed delayed work so idle retry continues.
+- Add a hardware-free timing self-check.
+
 ## 1.0.1
 - Restore preferred defaults one second after device-change notifications.
 - Verified Firefox routing after AirPlay TV output selection and user-confirmed screen-sharing reconnection.

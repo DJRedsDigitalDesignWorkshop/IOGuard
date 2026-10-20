@@ -13,6 +13,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build universal app
         run: ./scripts/build.sh
+      - name: Verify legacy debounce without touching audio
+        run: |
+          swiftc -module-cache-path build/cache AudioGuard.swift -o build/ua-audio-guard-test
+          build/ua-audio-guard-test --self-test-timing
       - name: Verify binary and bundle
         run: |
           lipo -verify_arch arm64 x86_64 build/IOGuard.app/Contents/MacOS/IOGuard

@@ -12,3 +12,5 @@ Launch at login uses Apple's SMAppService.mainApp and reflects its actual status
 `./scripts/build.sh` builds the app; `SIGNING_IDENTITY='Developer ID Application: ...' ./scripts/sign.sh` signs it. `./scripts/package.sh` creates the DMG and checksum. A signing identity supplied to package.sh also signs the DMG. `NOTARY_PROFILE=profile ./scripts/notarize.sh` submits, staples, and validates the disk image. Never distribute signing private keys. Regenerate checksums after stapling.
 
 The icon's editable drawing lives in scripts/make-icon.swift. AppIcon.icns contains every app icon size, while the menu-bar template reuses its speaker/lock motif. The DMG carries a custom file icon and a .VolumeIcon.icns for the mounted volume.
+
+The legacy CLI's periodic fallback must also respect pending delayed restoration. Version 1.0.2 clears pending before enforcing and skips fallback while pending; run `./ua-audio-guard --self-test-timing` to verify scheduling without audio-device writes.
