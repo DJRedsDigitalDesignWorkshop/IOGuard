@@ -18,3 +18,4 @@ Not yet verified: native app enforcement with legacy service removed, preference
 - Compiled cleanly and independently reviewed. Hardware-free timing test passes: pending debounce blocks fallback, repeated notifications delay restoration, and fallback resumes afterward.
 - Installed executable matches the built v1.0.2 binary; LaunchAgent restarted successfully. Previous v1.0.1 executable retained locally as rollback backup.
 - Current playback was restored from TV return to Apollo COMPUTER before installing the patch. A new full TV power-on test remains required; the timing defect is verified, but its role in every AirPlay failure is unproven.
+- Post-install TV-output selection test restored Universal Audio; Console COMPUTER showed playback and ANALOG 5/6 was quiet. This tests selecting an already-connected TV, not a full power-cycle.
