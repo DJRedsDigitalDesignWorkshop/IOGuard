@@ -4,6 +4,7 @@ IOGuard — by djred
 2. Open IOGuard from Applications. Look for the lock-and-speakers menu-bar icon.
 3. Choose your preferred input and output devices in Settings.
 4. Enable the guard. Optionally enable Launch at Login.
+5. Keep event-based recovery enabled if displays or wake cause stuck playback. Recover Sound Now performs a manual output reset; it may briefly interrupt audio.
 
 The guard restores macOS defaults after about one second. A brief audio switch is possible. If your interface is unplugged, it waits for the device to return. Pause the guard before intentionally selecting another device.
 

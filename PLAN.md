@@ -16,3 +16,11 @@ Turn the user-verified Universal Audio Guard into a downloadable macOS menu-bar 
 
 ## Acceptance
 Guard defaults by stable device UID; handle unplugged/ambiguous devices without choosing another device. Preserve the one-second restoration delay. Distinguish static build checks, UI verification, live audio tests, signing, and notarization. Keep the existing installed guard working until migration is deliberate.
+
+## Playback recovery extension
+- [x] Implement shared event-based recovery engine and manual action.
+- [x] Verify deterministic failure/cancellation cases and universal builds.
+- [x] Deploy background1.0.3 and verify manual plus automatic TV-output recovery on Apollo.
+- [ ] Verify full TV power-cycle and wake behavior with actual listening.
+- [x] Visually accept native recovery controls.
+- [ ] Migrate from legacy service if requested.

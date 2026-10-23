@@ -11,14 +11,19 @@ Download the versioned DMG from [GitHub Releases](https://github.com/DJRedsDigit
 
 The guard may allow a brief switch before restoring the defaults. Apps with their own selected outputs can behave independently. Check actual playback when testing AirPlay; a selected device name alone is insufficient verification.
 
+## Playback recovery
+Version 1.2.0 adds bounded recovery after output/display changes and wake, plus **Recover Sound Now**. A short playback interruption is possible. Recovery uses only a verified muted built-in output, never the TV, and does not monitor or record audio. See [recovery behavior and limits](docs/RECOVERY.md).
+
 ## Build
 ```sh
 ./scripts/build.sh
 ./scripts/package.sh
 ```
+Build the installed legacy helper with `./scripts/build-legacy.sh`.
+
 Requires Xcode command-line tools and the macOS SDK. Rebuild artwork with `swift scripts/make-icon.swift` if needed. See [signing and notarization](docs/SIGNING.md), [engineering](ENGINEERING.md), [plan](PLAN.md), and [changelog](CHANGELOG.md).
 
 ## Original script
-AudioGuard.swift, Install.command, Uninstall.command, and ua-audio-guard preserve the original user-verified Universal Audio Thunderbolt guard. Its version is 1.0.2; the native app starts at 1.1.0. Run only one guard at a time.
+AudioGuard.swift, Install.command, Uninstall.command, and ua-audio-guard preserve the original user-verified Universal Audio Thunderbolt guard. Its version is 1.0.3; the native app is 1.2.0. Run only one guard at a time.
 
 Author: djred.

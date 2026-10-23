@@ -15,11 +15,13 @@ jobs:
         run: ./scripts/build.sh
       - name: Verify legacy debounce without touching audio
         run: |
-          swiftc -module-cache-path build/cache AudioGuard.swift -o build/ua-audio-guard-test
-          build/ua-audio-guard-test --self-test-timing
+          ./scripts/build-legacy.sh
+          cat Sources/AudioRecovery.swift Tests/RecoveryTests.swift > build/recovery-tests.swift
+          swiftc -parse-as-library -module-cache-path build/cache build/recovery-tests.swift -o build/recovery-tests
+          build/recovery-tests
       - name: Verify binary and bundle
         run: |
-          lipo -verify_arch arm64 x86_64 build/IOGuard.app/Contents/MacOS/IOGuard
+          lipo build/IOGuard.app/Contents/MacOS/IOGuard -verify_arch arm64 x86_64
           codesign --verify --deep --strict build/IOGuard.app
           plutil -lint build/IOGuard.app/Contents/Info.plist
           ditto -c -k --keepParent build/IOGuard.app build/IOGuard-development.zip

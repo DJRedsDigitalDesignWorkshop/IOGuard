@@ -14,3 +14,8 @@ Launch at login uses Apple's SMAppService.mainApp and reflects its actual status
 The icon's editable drawing lives in scripts/make-icon.swift. AppIcon.icns contains every app icon size, while the menu-bar template reuses its speaker/lock motif. The DMG carries a custom file icon and a .VolumeIcon.icns for the mounted volume.
 
 The legacy CLI's periodic fallback must also respect pending delayed restoration. Version 1.0.2 clears pending before enforcing and skips fallback while pending; run `./ua-audio-guard --self-test-timing` to verify scheduling without audio-device writes.
+
+## Recovery in 1.2.0 / legacy 1.0.3
+See docs/RECOVERY.md. Shared AudioRecovery.swift owns the bounded output-only handoff; normal default enforcement yields during it. Automatic triggers are output topology/default changes and workspace wake, never the five-second timer. Legacy SIGUSR1 requests manual recovery and SIGTERM calls cancellation cleanup before exit. This is a route-reset workaround based on repeated observed recovery, not an established AirPlay root cause or audio silence detector.
+
+Sources/AudioRecovery.swift is concatenated with each entrypoint by scripts/build.sh and scripts/build-legacy.sh, so tests and both shipping variants share one engine.

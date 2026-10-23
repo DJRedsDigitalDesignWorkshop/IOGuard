@@ -5,8 +5,9 @@ ROOT="$PWD"
 VERSION="$(cat VERSION)"
 APP="$ROOT/build/IOGuard.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$ROOT/build/cache"
+cat Sources/AudioRecovery.swift Sources/IOGuard.swift > "$ROOT/build/app-main.swift"
 for ARCH in arm64 x86_64; do
-  swiftc -O -module-cache-path "$ROOT/build/cache" -target "${ARCH}-apple-macosx13.0" -framework Cocoa -framework CoreAudio -framework ServiceManagement Sources/IOGuard.swift -o "$ROOT/build/IOGuard-$ARCH"
+  swiftc -O -module-cache-path "$ROOT/build/cache" -target "${ARCH}-apple-macosx13.0" -framework Cocoa -framework CoreAudio -framework ServiceManagement "$ROOT/build/app-main.swift" -o "$ROOT/build/IOGuard-$ARCH"
 done
 lipo -create "$ROOT/build/IOGuard-arm64" "$ROOT/build/IOGuard-x86_64" -output "$APP/Contents/MacOS/IOGuard"
 cp Assets/AppIcon.icns Assets/MenuBarIconTemplate*.png "$APP/Contents/Resources/"

@@ -1,4 +1,4 @@
-// IOGuard 1.1.0 — Author: djred
+// IOGuard 1.2.0 — Author: djred
 // Native menu bar guard for macOS input, output, and system output devices.
 
 import AppKit
@@ -8,11 +8,12 @@ import ServiceManagement
 
 private let systemAudioObject = AudioObjectID(kAudioObjectSystemObject)
 private let preferredDeviceName = "Universal Audio Thunderbolt"
-private let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1.0"
+private let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.2.0"
 
 private let inputUIDKey = "IOGuard.preferredInputUID"
 private let outputUIDKey = "IOGuard.preferredOutputUID"
 private let enabledKey = "IOGuard.enabled"
+private let recoverPlaybackKey = "IOGuard.recoverPlaybackAfterDisplayOrWake"
 private let legacyGuardPath = NSHomeDirectory() + "/Library/LaunchAgents/com.djred.universalaudioguard.plist"
 
 private func propertyAddress(
@@ -168,10 +169,16 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
     private var preferredInputUID = ""
     private var preferredOutputUID = ""
     private var isEnabled = true
+    private var recoverPlaybackEnabled = true
     private var showPreferencesOnFirstRun = false
     private var listenersInstalled = false
+    private var isTerminating = false
     private var pendingEnforcement: DispatchWorkItem?
     private var fallbackTimer: Timer?
+    private var routeRecovery: AudioRouteRecovery?
+    private var recoveryObservers: [(NotificationCenter, NSObjectProtocol)] = []
+    private var lastObservedOutputUIDs: Set<String>?
+    private var lastRecoveryResult = "Ready"
 
     private var legacyGuardInstalled: Bool {
         FileManager.default.fileExists(atPath: legacyGuardPath)
@@ -182,22 +189,30 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
     private var inputPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private var outputPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private var enabledCheckbox = NSButton(checkboxWithTitle: "Enable audio guard", target: nil, action: nil)
+    private var recoverPlaybackCheckbox = NSButton(checkboxWithTitle: "Recover playback after display or wake changes", target: nil, action: nil)
+    private var recoveryExplanationLabel = NSTextField(wrappingLabelWithString: "Recovery briefly interrupts audio. IOGuard does not detect silence automatically.")
+    private var recoveryNowButton = NSButton(title: "Recover Sound Now", target: nil, action: nil)
     private var loginCheckbox = NSButton(checkboxWithTitle: "Launch at login", target: nil, action: nil)
     private var inputStatusLabel = NSTextField(wrappingLabelWithString: "")
     private var outputStatusLabel = NSTextField(wrappingLabelWithString: "")
     private var systemOutputStatusLabel = NSTextField(wrappingLabelWithString: "")
     private var overallStatusLabel = NSTextField(wrappingLabelWithString: "")
+    private var recoveryStatusLabel = NSTextField(wrappingLabelWithString: "")
     private var loginStatusLabel = NSTextField(wrappingLabelWithString: "")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         loadPreferences()
         refreshDevices()
+        lastObservedOutputUIDs = outputDeviceUIDSet()
+        configureRouteRecovery()
         createStatusItem()
         createPreferencesWindow()
         installAudioListeners()
+        installRecoveryObservers()
         fallbackTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             guard let self else { return }
+            guard self.routeRecovery?.isRecovering != true else { return }
             self.refreshDevices()
             // A fallback tick must not cut short the one-second Core Audio debounce.
             if self.pendingEnforcement == nil {
@@ -213,8 +228,32 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        routeRecovery?.cancel()
         pendingEnforcement?.cancel()
         fallbackTimer?.invalidate()
+        for (center, observer) in recoveryObservers { center.removeObserver(observer) }
+        recoveryObservers.removeAll()
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if isTerminating { return .terminateLater }
+
+        isTerminating = true
+        guard routeRecovery?.isRecovering == true else {
+            routeRecovery?.cancel()
+            return .terminateNow
+        }
+
+        pendingEnforcement?.cancel()
+        pendingEnforcement = nil
+        fallbackTimer?.invalidate()
+        fallbackTimer = nil
+        routeRecovery?.cancel()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -229,9 +268,84 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
         if defaults.object(forKey: enabledKey) == nil {
             defaults.set(!legacyGuardInstalled, forKey: enabledKey)
         }
-        isEnabled = defaults.bool(forKey: enabledKey)
+        if defaults.object(forKey: recoverPlaybackKey) == nil {
+            defaults.set(true, forKey: recoverPlaybackKey)
+        }
+        isEnabled = defaults.bool(forKey: enabledKey) && !legacyGuardInstalled
+        recoverPlaybackEnabled = defaults.bool(forKey: recoverPlaybackKey)
         preferredInputUID = defaults.string(forKey: inputUIDKey) ?? ""
         preferredOutputUID = defaults.string(forKey: outputUIDKey) ?? ""
+    }
+
+    private func configureRouteRecovery() {
+        routeRecovery = AudioRouteRecovery(
+            preferredOutput: { [weak self] in self?.preferredOutputDeviceID() },
+            canRecover: { [weak self] in self?.canRecoverSound() ?? false },
+            report: { [weak self] message in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.lastRecoveryResult = message
+                    self.updateStatusLabels()
+                }
+            }
+        )
+    }
+
+    private func installRecoveryObservers() {
+        let wakeCenter = NSWorkspace.shared.notificationCenter
+        let wakeObserver = wakeCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleAutomaticRecoveryEvent(reason: "Mac woke from sleep")
+        }
+        recoveryObservers.append((wakeCenter, wakeObserver))
+
+        let displayCenter = NotificationCenter.default
+        let displayObserver = displayCenter.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleAutomaticRecoveryEvent(reason: "Display configuration changed")
+        }
+        recoveryObservers.append((displayCenter, displayObserver))
+    }
+
+    private func preferredOutputDeviceID() -> AudioDeviceID? {
+        guard !preferredOutputUID.isEmpty,
+              let device = audioDevices.first(where: { $0.uid == preferredOutputUID && $0.hasOutput }) else {
+            return nil
+        }
+        return device.id
+    }
+
+    private func canRecoverSound() -> Bool {
+        isEnabled && !legacyGuardInstalled
+    }
+
+    private func canManuallyRecoverSound() -> Bool {
+        canRecoverSound() && preferredOutputDeviceID() != nil
+    }
+
+    private func outputDeviceUIDSet() -> Set<String> {
+        Set(audioDevices.lazy.filter(\.hasOutput).map(\.uid))
+    }
+
+    private func outputDiffersFromPreference() -> Bool {
+        guard let preferred = preferredOutputDeviceID() else { return false }
+        let (current, status) = readSystemDevice(kAudioHardwarePropertyDefaultOutputDevice)
+        return status == noErr && current != preferred
+    }
+
+    private func handleAutomaticRecoveryEvent(reason: String) {
+        guard !isTerminating, routeRecovery?.isRecovering != true else { return }
+        // Normal preference restoration remains first; the engine starts its recovery preflight later.
+        scheduleEnforcement()
+        guard recoverPlaybackEnabled, canRecoverSound() else { return }
+        routeRecovery?.request(reason: reason, automatic: true)
+        updateStatusLabels()
     }
 
     private func initializePreferredDevicesIfNeeded() {
@@ -331,7 +445,7 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
 
     private func createPreferencesWindow() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 600),
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 660),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -355,6 +469,10 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
 
         enabledCheckbox.target = self
         enabledCheckbox.action = #selector(enabledChanged(_:))
+        recoverPlaybackCheckbox.target = self
+        recoverPlaybackCheckbox.action = #selector(recoverPlaybackChanged(_:))
+        recoveryNowButton.target = self
+        recoveryNowButton.action = #selector(recoverSoundNow(_:))
         inputPopup.target = self
         inputPopup.action = #selector(preferredDeviceChanged(_:))
         outputPopup.target = self
@@ -366,8 +484,12 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
         outputStatusLabel = NSTextField(wrappingLabelWithString: "")
         systemOutputStatusLabel = NSTextField(wrappingLabelWithString: "")
         overallStatusLabel = NSTextField(wrappingLabelWithString: "")
+        recoveryStatusLabel = NSTextField(wrappingLabelWithString: "")
         loginStatusLabel = NSTextField(wrappingLabelWithString: "")
         overallStatusLabel.textColor = .secondaryLabelColor
+        recoveryExplanationLabel.textColor = .secondaryLabelColor
+        recoveryExplanationLabel.font = .systemFont(ofSize: 11)
+        recoveryStatusLabel.textColor = .secondaryLabelColor
         loginStatusLabel.textColor = .secondaryLabelColor
 
         let header = NSStackView(views: [appIconView, title, version])
@@ -377,6 +499,11 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
 
         let inputRow = selectorRow(label: "Preferred input", control: inputPopup)
         let outputRow = selectorRow(label: "Preferred output", control: outputPopup)
+
+        let recoveryStack = NSStackView(views: [recoverPlaybackCheckbox, recoveryExplanationLabel, recoveryNowButton])
+        recoveryStack.orientation = .vertical
+        recoveryStack.alignment = .leading
+        recoveryStack.spacing = 5
 
         let refreshButton = NSButton(title: "Refresh Devices", target: self, action: #selector(refreshButtonPressed(_:)))
         let refreshRow = NSStackView(views: [refreshButton, NSView()])
@@ -389,12 +516,12 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
         loginStack.alignment = .leading
         loginStack.spacing = 4
 
-        let statusStack = NSStackView(views: [inputStatusLabel, outputStatusLabel, systemOutputStatusLabel, overallStatusLabel])
+        let statusStack = NSStackView(views: [inputStatusLabel, outputStatusLabel, systemOutputStatusLabel, recoveryStatusLabel, overallStatusLabel])
         statusStack.orientation = .vertical
         statusStack.alignment = .leading
         statusStack.spacing = 5
 
-        let stack = NSStackView(views: [header, enabledCheckbox, separator(), inputRow, outputRow, refreshRow, separator(), loginStack, separator(), statusStack])
+        let stack = NSStackView(views: [header, enabledCheckbox, separator(), inputRow, outputRow, refreshRow, separator(), recoveryStack, separator(), loginStack, separator(), statusStack])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.distribution = .fill
@@ -416,6 +543,8 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
         inputStatusLabel.widthAnchor.constraint(equalToConstant: 510).isActive = true
         outputStatusLabel.widthAnchor.constraint(equalToConstant: 510).isActive = true
         systemOutputStatusLabel.widthAnchor.constraint(equalToConstant: 510).isActive = true
+        recoveryStatusLabel.widthAnchor.constraint(equalToConstant: 510).isActive = true
+        recoveryExplanationLabel.widthAnchor.constraint(equalToConstant: 500).isActive = true
         overallStatusLabel.widthAnchor.constraint(equalToConstant: 510).isActive = true
         loginStatusLabel.widthAnchor.constraint(equalToConstant: 510).isActive = true
 
@@ -445,22 +574,36 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
         guard !listenersInstalled else { return }
         listenersInstalled = true
 
-        let registrations: [(AudioObjectPropertySelector, Bool)] = [
-            (kAudioHardwarePropertyDevices, true),
-            (kAudioHardwarePropertyDefaultInputDevice, false),
-            (kAudioHardwarePropertyDefaultOutputDevice, false),
-            (kAudioHardwarePropertyDefaultSystemOutputDevice, false)
+        let registrations: [AudioObjectPropertySelector] = [
+            kAudioHardwarePropertyDevices,
+            kAudioHardwarePropertyDefaultInputDevice,
+            kAudioHardwarePropertyDefaultOutputDevice,
+            kAudioHardwarePropertyDefaultSystemOutputDevice
         ]
-        for (selector, isTopologyChange) in registrations {
+        for selector in registrations {
             var address = propertyAddress(selector)
             let status = AudioObjectAddPropertyListenerBlock(systemAudioObject, &address, DispatchQueue.main) { [weak self] _, _ in
                 guard let self else { return }
-                if isTopologyChange {
+                guard !self.isTerminating, self.routeRecovery?.isRecovering != true else { return }
+
+                if selector == kAudioHardwarePropertyDevices {
                     self.refreshDevices()
-                } else {
+                    let outputUIDs = self.outputDeviceUIDSet()
+                    let changed = self.lastObservedOutputUIDs.map { $0 != outputUIDs } ?? false
+                    self.lastObservedOutputUIDs = outputUIDs
+                    if changed {
+                        self.handleAutomaticRecoveryEvent(reason: "Output audio devices changed")
+                    }
+                } else if selector == kAudioHardwarePropertyDefaultInputDevice {
                     self.updateStatusLabels()
+                    self.scheduleEnforcement()
+                } else if selector == kAudioHardwarePropertyDefaultOutputDevice {
+                    self.updateStatusLabels()
+                    self.handleAutomaticRecoveryEvent(reason: "Default output changed")
+                } else if selector == kAudioHardwarePropertyDefaultSystemOutputDevice {
+                    self.updateStatusLabels()
+                    self.handleAutomaticRecoveryEvent(reason: "System output changed")
                 }
-                self.scheduleEnforcement()
             }
             if status != noErr {
                 listenerErrors.append("Unable to monitor Core Audio property \(selector): \(statusDescription(status)).")
@@ -469,7 +612,7 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
     }
 
     private func scheduleEnforcement() {
-        guard isEnabled else { return }
+        guard isEnabled, routeRecovery?.isRecovering != true else { return }
         pendingEnforcement?.cancel()
         lastInputState = "Input: Waiting to restore preferred device."
         lastOutputState = "Output: Waiting to restore preferred device."
@@ -478,6 +621,7 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.pendingEnforcement = nil
+            guard self.routeRecovery?.isRecovering != true else { return }
             self.refreshDevices()
             self.enforceIfEnabled()
         }
@@ -486,6 +630,7 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
     }
 
     private func enforceIfEnabled() {
+        guard routeRecovery?.isRecovering != true else { return }
         if legacyGuardInstalled {
             lastInputState = "Input: Paused — original guard is installed."
             lastOutputState = "Output: Paused — original guard is installed."
@@ -578,6 +723,12 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
 
     private func updateStatusLabels() {
         enabledCheckbox.isEnabled = !legacyGuardInstalled
+        recoverPlaybackCheckbox.state = recoverPlaybackEnabled ? .on : .off
+        recoverPlaybackCheckbox.isEnabled = !legacyGuardInstalled
+        recoveryNowButton.isEnabled = canManuallyRecoverSound() && routeRecovery?.isRecovering != true
+        recoveryStatusLabel.stringValue = routeRecovery?.isRecovering == true
+            ? "Recovery: In progress…"
+            : "Recovery: \(lastRecoveryResult)"
         inputStatusLabel.stringValue = displayStatus(
             lastInputState,
             label: "Input",
@@ -626,7 +777,12 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
             return "\(label): Active — \(expectedDevice.name)."
         }
         if currentStatus != noErr && state.contains("Unable to read current device") { return state }
-        return "\(state) · Current: \(current)"
+        if preferredUID.isEmpty { return "\(label): Choose a preferred device · Current: \(current)" }
+        guard let expectedDevice else { return "\(label): Preferred device missing · Current: \(current)" }
+        if state.contains("Restore failed") || state.contains("did not take effect") || state.contains("Unable to verify") {
+            return "\(state) · Current: \(current)"
+        }
+        return label + ": Current " + current + " · Preferred " + expectedDevice.name + "."
     }
 
     private func updateInterface() {
@@ -678,6 +834,11 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
         preferences.target = self
         menu.addItem(preferences)
 
+        let recovery = NSMenuItem(title: "Recover Sound Now", action: #selector(recoverSoundNow(_:)), keyEquivalent: "")
+        recovery.target = self
+        recovery.isEnabled = canManuallyRecoverSound() && routeRecovery?.isRecovering != true
+        menu.addItem(recovery)
+
         let toggle = NSMenuItem(title: isEnabled ? "Pause Guard" : "Enable Guard", action: #selector(toggleGuard(_:)), keyEquivalent: "")
         toggle.target = self
         toggle.isEnabled = !legacyGuardInstalled
@@ -706,6 +867,7 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
             updateStatusLabels()
             return
         }
+        if isEnabled { routeRecovery?.cancel() }
         isEnabled.toggle()
         defaults.set(isEnabled, forKey: enabledKey)
         if isEnabled {
@@ -737,7 +899,9 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
             updateStatusLabels()
             return
         }
-        isEnabled = sender.state == .on
+        let enabled = sender.state == .on
+        if !enabled { routeRecovery?.cancel() }
+        isEnabled = enabled
         defaults.set(isEnabled, forKey: enabledKey)
         if isEnabled {
             enforceIfEnabled()
@@ -751,9 +915,11 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
     @objc private func preferredDeviceChanged(_ sender: NSPopUpButton) {
         guard let uid = sender.selectedItem?.representedObject as? String else { return }
         if sender === inputPopup {
+            if preferredInputUID != uid { routeRecovery?.cancel() }
             preferredInputUID = uid
             defaults.set(uid, forKey: inputUIDKey)
         } else if sender === outputPopup {
+            if preferredOutputUID != uid { routeRecovery?.cancel() }
             preferredOutputUID = uid
             defaults.set(uid, forKey: outputUIDKey)
         } else {
@@ -769,6 +935,28 @@ private final class IOGuardAppDelegate: NSObject, NSApplicationDelegate, NSWindo
     @objc private func refreshButtonPressed(_ sender: NSButton) {
         refreshDevices()
         if pendingEnforcement == nil { enforceIfEnabled() }
+    }
+
+    @objc private func recoverPlaybackChanged(_ sender: NSButton) {
+        let enabled = sender.state == .on
+        if !enabled { routeRecovery?.cancel() }
+        recoverPlaybackEnabled = enabled
+        defaults.set(enabled, forKey: recoverPlaybackKey)
+        updateStatusLabels()
+    }
+
+    @objc private func recoverSoundNow(_ sender: Any?) {
+        guard canManuallyRecoverSound(), routeRecovery?.isRecovering != true else {
+            updateStatusLabels()
+            return
+        }
+        if outputDiffersFromPreference() { enforceIfEnabled() }
+        guard !outputDiffersFromPreference() else {
+            updateStatusLabels()
+            return
+        }
+        routeRecovery?.request(reason: "Manual recovery", automatic: false)
+        updateStatusLabels()
     }
 
     @objc private func loginChanged(_ sender: NSButton) {

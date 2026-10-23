@@ -13,7 +13,7 @@ export NOTARY_PROFILE='your-saved-profile'
 
 Create a keychain profile interactively using `xcrun notarytool store-credentials` if you do not already have one. Do not paste credentials into source or a public issue. Apple notarization uploads the release artifact to Apple. Signing alone is not notarization; public releases should be accepted, stapled, and Gatekeeper-verified.
 
-Inspect signatures with `codesign --verify --deep --strict --verbose=2 build/IOGuard.app` and `codesign -dv --verbose=4 build/IOGuard.app`. Validate the DMG ticket with `xcrun stapler validate dist/IOGuard-1.1.0-universal.dmg`.
+Inspect signatures with `codesign --verify --deep --strict --verbose=2 build/IOGuard.app` and `codesign -dv --verbose=4 build/IOGuard.app`. Validate the DMG ticket with `xcrun stapler validate dist/IOGuard-1.2.0-universal.dmg`.
 
 Official Apple references: https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution and https://developer.apple.com/documentation/security/customizing-the-notarization-workflow
 

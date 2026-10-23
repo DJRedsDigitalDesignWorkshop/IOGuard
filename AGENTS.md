@@ -11,3 +11,5 @@
 - Do not replace or stop the user's installed legacy guard until the app has been validated and migration is explicit. Never run two guards concurrently during audio tests.
 - Preserve one-second delayed restoration after audio device changes. A selected Sound setting alone is insufficient proof of audible routing.
 - Keep PLAN.md, ENGINEERING.md, MEMORY.md, and CHANGELOG.md consistent with verified results. Clearly label untested behavior.
+
+- Route recovery is now explicitly user-authorized: use the shared AudioRecovery.swift engine only, never periodic cycling, never an unmuted fallback. Preserve event debounce, cooldown, cancellation cleanup, and honest silence-detection limits.

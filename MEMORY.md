@@ -24,3 +24,9 @@
 
 ## Recurrence — October 20, 2026
 TV power-on again sent Firefox audio through the TV return despite reported defaults being UA. Switching to built-in output and letting the guard restore UA reactivated COMPUTER and quieted ANALOG 5/6. Legacy v1.0.1 fallback could bypass pending debounce; CLI v1.0.2 fixes that race. Root cause of every AirPlay reroute is still unproven; a fresh TV power-on listening test is required.
+
+## Recovery work — October 23, 2026
+Silence returned while defaults still reported Universal Audio. A manual switch to built-in and guard restoration reactivated COMPUTER playback; user said sound returned. Added a shared bounded, output-only recovery engine in app1.2.0/background1.0.3, triggered by display/output changes and wake, plus manual recovery. No silence detection or audio capture. Auto cooldown60s and manual5s use one last-attempt timestamp. Live manual recovery completed; no guarantee of preventing stalls without system events. See docs/VALIDATION.md for proof levels.
+
+User confirmed normal Apollo playback after the controlled manual recovery. The app recovery UI was visually accepted; legacy detection kept it paused.
+Automatic TV-output selection recovery also completed on the final build; Sound returned to UA and COMPUTER carried playback. Full TV power-cycle and sleep/wake remain untested.
